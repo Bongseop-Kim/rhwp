@@ -339,6 +339,8 @@ export class InputHandler {
   private history: CommandHistory;
   private textarea: HTMLTextAreaElement;
   private active = false;
+  /** 직전 문서 창 높이. 줄어든 resize(가상 키보드 등)만 캐럿을 다시 보이게 한다. */
+  private lastViewportHeight = 0;
   private cancelPendingObjectCut: (() => void) | null = null;
   private insertMode = true;  // true=삽입, false=수정(덮어쓰기)
   private editMode: EditorEditMode = 'normal';
@@ -732,6 +734,19 @@ export class InputHandler {
     eventBus.on('viewport-resize', () => {
       // CanvasView가 같은 이벤트에서 VirtualScroll을 먼저 확정한 다음 그 좌표를 읽는다.
       window.setTimeout(() => this.updateViewportOverlayPositions(), 0);
+    });
+    // 가상 키보드가 문서 창을 줄이면 CanvasView 의 가운데 기준 앵커가 입력 중인 줄을 밀어낸다.
+    // 입력 중일 때만 캐럿을 다시 보이게 하고, 창이 커질 때는 사용자 스크롤을 지킨다.
+    eventBus.on('viewport-resize', (_width, height) => {
+      const viewportHeight = height as number;
+      const shrank = viewportHeight < this.lastViewportHeight;
+      this.lastViewportHeight = viewportHeight;
+      if (!shrank) return;
+      window.setTimeout(() => {
+        if (!this.active || document.activeElement !== this.textarea) return;
+        const rect = this.cursor.getRect();
+        if (rect) this.scrollCaretIntoView(this.adjustExitedFieldEndCaretRect(rect));
+      }, 0);
     });
 
     // 표 객체 선택 변경 시 렌더링
