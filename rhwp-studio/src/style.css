@@ -36,6 +36,14 @@
 .rhwp-chrome-no-toolbar #icon-toolbar,
 .rhwp-chrome-no-toolbar #style-bar { display: none; }
 .rhwp-chrome-no-status #status-bar { display: none; }
+/* 눈금자를 숨기면 그 트랙도 접어 문서 창이 전체를 쓴다. 좁은 화면·임베드용. */
+.rhwp-chrome-no-ruler #ruler-corner,
+.rhwp-chrome-no-ruler #h-ruler,
+.rhwp-chrome-no-ruler #v-ruler { display: none; }
+.rhwp-chrome-no-ruler #editor-area {
+  grid-template-columns: 0 minmax(0, 1fr) auto;
+  grid-template-rows: 0 minmax(0, 1fr);
+}
 
 /* ── 도구 상자 보이기/숨기기 (보기 > 도구 상자) ──────────────
    숨김만 표현한다. 값은 저장된 설정에서 오고, public/theme-init.js 가 번들보다 먼저

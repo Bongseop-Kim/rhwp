@@ -107,11 +107,12 @@ export type AutomationErrorCode =
   | 'UNKNOWN_MENU'
   | 'UNKNOWN_COMMAND';
 
-/** chrome(메뉴·툴바·상태표시줄) 표시 상태. 표시만 바꾸며 커맨드는 계속 살아 있다. */
+/** chrome(메뉴·툴바·상태표시줄·눈금자) 표시 상태. 표시만 바꾸며 커맨드는 계속 살아 있다. */
 export interface ChromeVisibility {
   menu: boolean;
   toolbar: boolean;
   statusbar: boolean;
+  ruler: boolean;
 }
 
 /** `#studio-root` 에 얹는 클래스 — 실제 숨김은 CSS 가 한다. */
@@ -119,4 +120,5 @@ export const CHROME_HIDDEN_CLASS: Readonly<Record<keyof ChromeVisibility, string
   menu: 'rhwp-chrome-no-menu',
   toolbar: 'rhwp-chrome-no-toolbar',
   statusbar: 'rhwp-chrome-no-status',
+  ruler: 'rhwp-chrome-no-ruler',
 };

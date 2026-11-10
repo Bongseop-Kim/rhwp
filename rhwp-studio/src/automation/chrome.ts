@@ -20,7 +20,12 @@ export function getChromeVisibility(): ChromeVisibility {
   const el = root();
   const visible = (key: keyof ChromeVisibility) =>
     !el || !el.classList.contains(CHROME_HIDDEN_CLASS[key]);
-  return { menu: visible('menu'), toolbar: visible('toolbar'), statusbar: visible('statusbar') };
+  return {
+    menu: visible('menu'),
+    toolbar: visible('toolbar'),
+    statusbar: visible('statusbar'),
+    ruler: visible('ruler'),
+  };
 }
 
 /**

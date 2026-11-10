@@ -426,6 +426,7 @@ export interface ChromeVisibility {
   menu: boolean;
   toolbar: boolean;
   statusbar: boolean;
+  ruler: boolean;
 }
 
 export interface StudioOptions extends EditorOptions {
