@@ -20,9 +20,11 @@ interface EmbedRuntimeOptions {
   subscribeDocumentChanged?: (listener: (payload: unknown) => void) => () => void;
   /** 누름틀 진입·이탈. 클라이언트가 `field-focus-events-v1` 을 협상했을 때만 구독한다. */
   subscribeFieldChanged?: (listener: (payload: unknown) => void) => () => void;
+  /** 캐럿 서식 상태. 클라이언트가 `format-state-events-v1` 을 협상했을 때만 구독한다. */
+  subscribeFormatState?: (listener: (payload: unknown) => void) => () => void;
 }
 
-type EventSubscriptions = Partial<Record<'documentChanged' | 'fieldChanged' | 'commandError',
+type EventSubscriptions = Partial<Record<'documentChanged' | 'fieldChanged' | 'commandError' | 'formatStateChanged',
   (listener: (payload: unknown) => void) => () => void>>;
 
 function errorText(error: unknown): string {
@@ -215,6 +217,9 @@ export function installEmbedRuntime(options: EmbedRuntimeOptions): () => void {
       }
       if (capabilities.includes('field-focus-events-v1') && options.subscribeFieldChanged) {
         subscriptions.fieldChanged = options.subscribeFieldChanged;
+      }
+      if (capabilities.includes('format-state-events-v1') && options.subscribeFormatState) {
+        subscriptions.formatStateChanged = options.subscribeFormatState;
       }
       const offEvents = bindPort(
         port,

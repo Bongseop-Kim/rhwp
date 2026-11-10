@@ -18,6 +18,7 @@ export const EMBED_CAPABILITIES = [
   'document-change-events-v1',
   'field-focus-events-v1',
   'command-error-v1',
+  'format-state-events-v1',
 ] as const;
 
 export interface EmbedConnectAttempt {

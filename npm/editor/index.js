@@ -102,6 +102,8 @@ export class RhwpEditor {
     this._documentChangedListeners = new Set();
     this._offDocumentChanged = null;
     this._fieldChangedListeners = new Set();
+    this._formatStateListeners = new Set();
+    this._offFormatState = null;
     this._offFieldChanged = null;
     this._lastDocumentEpoch = null;
     this._lastDocumentChangeSeq = null;
@@ -388,6 +390,31 @@ export class RhwpEditor {
     };
   }
 
+  /**
+   * 캐럿 위치의 서식 상태(굵게·기울임·밑줄·취소선·정렬·목록)가 바뀔 때 이벤트를 받습니다.
+   * studio 툴바를 숨기고 자체 툴바를 그릴 때 버튼 켜짐 상태에 씁니다.
+   */
+  onFormatStateChanged(listener) {
+    assertCapability(this._transport, 'format-state-events-v1');
+    if (typeof listener !== 'function') throw new TypeError('listener must be a function');
+    this._formatStateListeners.add(listener);
+    if (!this._offFormatState) {
+      this._offFormatState = this._transport.on('formatStateChanged', (payload) => {
+        if (payload?.schemaVersion !== 1) return;
+        for (const subscriber of this._formatStateListeners) {
+          try { subscriber(payload); } catch { /* 한 listener가 다른 listener를 막지 않는다. */ }
+        }
+      });
+    }
+    return () => {
+      this._formatStateListeners.delete(listener);
+      if (this._formatStateListeners.size === 0) {
+        this._offFormatState?.();
+        this._offFormatState = null;
+      }
+    };
+  }
+
   _isFreshDocumentEvent(epoch, changeSeq) {
     if (this._lastDocumentEpoch === null) return true;
     if (epoch !== this._lastDocumentEpoch) return epoch > this._lastDocumentEpoch;
@@ -507,6 +534,9 @@ export class RhwpEditor {
     this._offFieldChanged?.();
     this._offFieldChanged = null;
     this._fieldChangedListeners.clear();
+    this._offFormatState?.();
+    this._offFormatState = null;
+    this._formatStateListeners.clear();
     this._transport.destroy();
     this._iframe.remove();
   }

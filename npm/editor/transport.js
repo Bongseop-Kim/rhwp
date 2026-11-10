@@ -11,11 +11,13 @@ const CAPABILITIES = [
   'target-navigation-v1',
   'document-change-events-v1',
   'field-focus-events-v1',
+  'format-state-events-v1',
 ];
 /** 이벤트마다 협상돼야 하는 capability. 목록에 없는 이벤트는 버린다. */
 const EVENT_CAPABILITIES = {
   documentChanged: 'document-change-events-v1',
   fieldChanged: 'field-focus-events-v1',
+  formatStateChanged: 'format-state-events-v1',
 };
 const LONG_RUNNING_METHODS = new Set([
   'loadFile', 'getFontDecisionTrace', 'exportHwp', 'exportHwpVerify', 'exportHwpx', 'exportHml',

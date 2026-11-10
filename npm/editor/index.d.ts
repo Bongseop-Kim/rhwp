@@ -278,6 +278,18 @@ export interface RhwpDocumentChangedEventV1 {
   commandId: string;
 }
 
+/** 캐럿 서식 상태 이벤트(`format-state-events-v1`). 값이 바뀔 때만 온다 */
+export interface RhwpFormatStateV1 {
+  schemaVersion: 1;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  strikethrough: boolean;
+  /** 'left' | 'center' | 'right' | 'justify' | 'distribute' | 'split', 모르면 '' */
+  alignment: string;
+  list: 'none' | 'bullet' | 'number' | 'outline';
+}
+
 /** 누름틀 진입·이탈 이벤트(`field-focus-events-v1`). 밖으로 나오면 `inField:false` 만 온다 */
 export type RhwpFieldChangedEventV1 =
   | { schemaVersion: 1; inField: false }
@@ -345,6 +357,12 @@ export declare class RhwpEditor {
    * 다시 알리지 않는다. 스튜디오가 field-focus-events-v1 을 광고하지 않으면 던진다
    */
   onFieldChanged(listener: (event: RhwpFieldChangedEventV1) => void): () => void;
+  /**
+   * 캐럿 서식 상태가 바뀔 때 이벤트를 받는다. 자체 툴바의 켜짐 표시용.
+   * 값이 바뀔 때만 오고 문서를 열 때 첫 상태가 한 번 오므로 `loadFile` 전에 구독한다.
+   * 스튜디오가 format-state-events-v1 을 광고하지 않으면 던진다
+   */
+  onFormatStateChanged(listener: (event: RhwpFormatStateV1) => void): () => void;
   /** iframe 엘리먼트를 반환합니다 */
   readonly element: HTMLIFrameElement;
   // ── 브리지 표면 ────────────────────────────────────────────────
