@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+<title>rhwp PoC</title>
+<style>
+  html, body { margin: 0; height: 100%; font-family: sans-serif; background: #fff; }
+  #s { font-size: 12px; padding: 4px 8px; background: #222; color: #0f0; white-space: pre-wrap; max-height: 25vh; overflow: auto; }
+  #c { height: 75vh; }
+  body.mini { display: flex; flex-direction: column; height: 100dvh; }
+  body.mini #s { max-height: 10vh; flex: none; }
+  body.mini #c { flex: 1; height: auto; min-height: 0; }
+</style>
+</head>
+<body>
+<div id="s">loading…</div>
+<div id="c"></div>
+<script type="module">
+const t0 = performance.now();
+const sEl = document.getElementById('s');
+const ua = navigator.userAgent;
+function log(msg) {
+  const line = `[${((performance.now() - t0) / 1000).toFixed(2)}s] ${msg}`;
+  sEl.textContent = line + '\n' + sEl.textContent;
+  fetch('/log', { method: 'POST', body: line }).catch(() => {});
+}
+window.addEventListener('error', (e) => log('ERR ' + e.message));
+window.addEventListener('unhandledrejection', (e) => log('REJ ' + (e.reason?.message || e.reason)));
+log('start ' + ua);
+
+// 웹의 아차사고 본문과 비슷한 형태: 문단 + 표 + 목록
+const SAMPLE = `<p>사고 개요: 지게차 후진 중 작업자와 근접</p>
+<table border="1" style="border-collapse:collapse"><tr><td>구분</td><td>내용</td><td>비고</td></tr>
+<tr><td>장소</td><td>2공장 출하장</td><td></td></tr><tr><td>원인</td><td>후방 감시자 부재</td><td></td></tr></table>
+<ul><li>후방 경보기 점검</li><li>유도자 배치</li></ul><p>끝.</p>`;
+
+const core = await import('/vendor/rhwp/core/rhwp.js');
+await core.default({ module_or_path: '/vendor/rhwp/core/rhwp_bg.wasm' });
+log('core ready');
+const doc = core.HwpDocument.createEmpty();
+doc.createBlankDocument();
+const long = new URLSearchParams(location.search).has('long');
+const body = long ? SAMPLE + Array.from({ length: 60 }, (_, i) => `<p>추가 문단 ${i + 1}</p>`).join('') : SAMPLE;
+log('pasteHtml ' + doc.pasteHtml(0, 0, 0, body));
+const bytes = doc.exportHwpx();
+doc.free();
+log('hwpx bytes ' + bytes.length);
+
+const { createEditor, createStudio } = await import('/vendor/rhwp/editor/index.js');
+const mini = new URLSearchParams(location.search).has('mini');
+if (mini) document.body.classList.add('mini');
+const editor = mini
+  ? await createStudio('#c', { chrome: { menu: false, toolbar: false, statusbar: false, ruler: false } })
+  : await createEditor('#c');
+if (mini) {
+  const cmds = (await editor.commands.list()).map((c) => c.id).filter((id) => /zoom|fit|ruler|view:/.test(id));
+  log('view cmds ' + cmds.join(','));
+  const zoom = new URLSearchParams(location.search).get('zoom') || 'view:zoom-fit-width'; for (const id of [zoom]) log(id + ' -> ' + JSON.stringify(await editor.commands.execute(id)));
+}
+log('editor ready');
+await editor.loadFile(bytes, '본문.hwpx', { suppressDialogs: true });
+log('loaded pages=' + (await editor.pageCount()));
+if (mini) { const z = new URLSearchParams(location.search).get('zoom'); if (z) log('after-load ' + z + ' -> ' + JSON.stringify(await editor.commands.execute(z))); }
+
+function textOf(hwpx) {
+  const d = new core.HwpDocument(hwpx);
+  try { return d.getTextFileText(); } finally { d.free(); }
+}
+log('initial text: ' + JSON.stringify(textOf(bytes)));
+
+let lastSeq = -1;
+setInterval(async () => {
+  try {
+    const st = await editor.getDocumentState();
+    if (st.changeSeq === lastSeq) return;
+    lastSeq = st.changeSeq;
+    const out = await editor.exportHwpx();
+    log(`changeSeq=${st.changeSeq} dirty=${st.dirty} text: ${JSON.stringify(textOf(out))}`);
+  } catch (e) { log('poll ' + e.message); }
+}, 3000);
+</script>
+</body>
+</html>

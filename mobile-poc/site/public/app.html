@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, interactive-widget=resizes-content">
+<title>사고내용 수정</title>
+<style>
+  /* dds-m 라이트 토큰 값 */
+  :root {
+    --fg: #212121; --fg-muted: #616161; --fg-subtle: #757575;
+    --brand: #2A4CDF; --brand-weak: #EEF2FF;
+    --bg: #FFFFFF; --bg-basement: #FAFAFA; --bg-weak: #F5F5F5; --bg-weak-pressed: #EEEEEE;
+    --stroke-weak: #EEEEEE; --stroke: #E0E0E0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    display: flex; flex-direction: column; height: 100dvh;
+    font-family: Pretendard, -apple-system, system-ui, sans-serif; color: var(--fg); background: var(--bg);
+    -webkit-tap-highlight-color: transparent;
+  }
+  header {
+    flex: none; height: 52px; display: flex; align-items: center; gap: 4px; padding: 0 8px;
+    border-bottom: 1px solid var(--stroke-weak);
+  }
+  header .back { width: 40px; height: 40px; border: 0; background: none; color: var(--fg); display: grid; place-items: center; padding: 0; }
+  svg.icon { width: 22px; height: 22px; display: block; }
+  nav button { display: grid; place-items: center; }
+  header h1 { flex: 1; margin: 0; font-size: 17px; font-weight: 600; }
+  header .done {
+    height: 36px; padding: 0 14px; border: 0; border-radius: 10px;
+    background: var(--brand); color: #fff; font-size: 15px; font-weight: 600;
+  }
+  #editor { flex: 1; min-height: 0; background: var(--bg-basement); }
+  #editor iframe { border: 0; display: block; }
+  nav {
+    flex: none; display: flex; align-items: center; gap: 2px; padding: 6px 8px;
+    border-top: 1px solid var(--stroke-weak); background: var(--bg);
+    overflow-x: auto; scrollbar-width: none;
+  }
+  nav::-webkit-scrollbar { display: none; }
+  nav .sep { flex: none; width: 1px; height: 20px; background: var(--stroke); margin: 0 4px; }
+  nav button {
+    flex: none; min-width: 40px; height: 40px; padding: 0 8px; border: 0; border-radius: 10px;
+    background: none; color: var(--fg-muted); font-size: 16px; font-family: inherit;
+  }
+  nav button:active { background: var(--bg-weak-pressed); }
+  nav button[aria-pressed="true"] { background: var(--brand-weak); color: var(--brand); }
+  nav button:disabled { color: var(--stroke); }
+  .b { font-weight: 800; } .u { text-decoration: underline; } .s { text-decoration: line-through; }
+  #toast {
+    position: fixed; left: 50%; top: 64px; transform: translateX(-50%);
+    background: rgba(33,33,33,.9); color: #fff; padding: 8px 14px; border-radius: 10px;
+    font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<header>
+  <button class="back" aria-label="뒤로" data-icon="ArrowLeftSLine"></button>
+  <h1>사고내용 수정</h1>
+  <button class="done" id="done">완료</button>
+</header>
+<div id="editor"></div>
+<nav aria-label="서식">
+  <button data-cmd="format:bold" data-state="bold" aria-pressed="false" aria-label="굵게" data-icon="Bold"></button>
+  <button data-cmd="format:underline" data-state="underline" aria-pressed="false" aria-label="밑줄" data-icon="Underline"></button>
+  <button data-cmd="format:strikethrough" data-state="strikethrough" aria-pressed="false" aria-label="취소선" data-icon="Strikethrough"></button>
+  <span class="sep"></span>
+  <button data-cmd="format:toggle-bullet" data-list="bullet" aria-pressed="false" aria-label="글머리표" data-icon="ListUnordered"></button>
+  <button data-cmd="format:toggle-numbering" data-list="number" aria-pressed="false" aria-label="번호 목록" data-icon="ListOrdered"></button>
+  <button id="align" aria-label="정렬" data-icon="AlignJustify"></button>
+  <span class="sep"></span>
+  <button data-cmd="edit:undo" aria-label="실행 취소" data-icon="ArrowGoBackLine"></button>
+  <button data-cmd="edit:redo" aria-label="다시 실행" data-icon="ArrowGoForwardLine"></button>
+</nav>
+<div id="toast"></div>
+<script type="module">
+const t0 = performance.now();
+const log = (msg) => {
+  const line = `[${((performance.now() - t0) / 1000).toFixed(2)}s] ${msg}`;
+  console.log(line);
+  fetch('/log', { method: 'POST', body: line }).catch(() => {});
+};
+const toast = (msg) => {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.style.opacity = '1';
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => { el.style.opacity = '0'; }, 1600);
+};
+window.addEventListener('error', (e) => log('ERR ' + e.message));
+window.addEventListener('unhandledrejection', (e) => log('REJ ' + (e.reason?.message || e.reason)));
+
+const SAMPLE = `<p>사고 개요: 지게차 후진 중 작업자와 근접</p>
+<table border="1" style="border-collapse:collapse"><tr><td>구분</td><td>내용</td><td>비고</td></tr>
+<tr><td>장소</td><td>2공장 출하장</td><td></td></tr><tr><td>원인</td><td>후방 감시자 부재</td><td></td></tr></table>
+<ul><li>후방 경보기 점검</li><li>유도자 배치</li></ul><p>재발 방지 대책을 아래에 적는다.</p><p></p>`;
+
+const core = await import('/vendor/rhwp/core/rhwp.js');
+await core.default({ module_or_path: '/vendor/rhwp/core/rhwp_bg.wasm' });
+const doc = core.HwpDocument.createEmpty();
+doc.createBlankDocument();
+doc.pasteHtml(0, 0, 0, SAMPLE);
+const bytes = doc.exportHwpx();
+doc.free();
+
+const { createStudio } = await import('/vendor/rhwp/editor/index.js');
+const editor = await createStudio('#editor', {
+  chrome: { menu: false, toolbar: false, statusbar: false, ruler: false },
+});
+const ALIGNS = ['left', 'center', 'right', 'justify'];
+const ALIGN_ICON = { left: 'AlignLeft', center: 'AlignCenter', right: 'AlignRight', justify: 'AlignJustify' };
+const ICONS = Object.fromEntries((await (await fetch('/icons.txt')).text()).trim().split('\n').map((line) => {
+  const [name, ...rest] = line.split(' ');
+  return [name, rest.join(' ').match(/d="[^"]+"/g).map((d) => `<path ${d}/>`).join('')];
+}));
+const setIcon = (el, name) => { el.innerHTML = `<svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${ICONS[name]}</svg>`; };
+for (const el of document.querySelectorAll('[data-icon]')) setIcon(el, el.dataset.icon);
+const alignBtn = document.getElementById('align');
+let state = { alignment: 'justify' };
+// 첫 서식 상태는 문서를 열 때 한 번 오므로 loadFile 전에 구독한다
+editor.onFormatStateChanged((s) => {
+  state = s;
+  log('format ' + JSON.stringify(s));
+  for (const btn of document.querySelectorAll('[data-state]')) btn.setAttribute('aria-pressed', String(!!s[btn.dataset.state]));
+  for (const btn of document.querySelectorAll('[data-list]')) btn.setAttribute('aria-pressed', String(s.list === btn.dataset.list));
+  setIcon(alignBtn, ALIGN_ICON[s.alignment] ?? 'AlignLeft');
+});
+await editor.loadFile(bytes, '본문.hwpx', { suppressDialogs: true });
+log('loaded');
+// 모바일: 쪽 여백을 창 밖으로 보내고 본문 폭을 창에 맞춘다
+log('fit-content -> ' + JSON.stringify(await editor.commands.execute('view:zoom-fit-content')));
+window.editor = editor;
+
+// 툴바: 누를 때 문서 포커스(키보드)를 뺏지 않는다
+for (const btn of document.querySelectorAll('nav button')) {
+  btn.addEventListener('pointerdown', (e) => e.preventDefault());
+  btn.addEventListener('click', async () => {
+    let id = btn.dataset.cmd;
+    if (btn === alignBtn) {
+      const next = ALIGNS[(ALIGNS.indexOf(state.alignment) + 1) % ALIGNS.length];
+      id = `format:align-${next}`;
+    }
+    // 기본 글머리표(●)는 휴대폰 글자 크기에서 너무 크다
+    const params = id === 'format:toggle-bullet' ? { bulletChar: '•' } : undefined;
+    const result = await editor.commands.execute(id, params);
+    log(`${id} -> ${JSON.stringify(result)}`);
+    if (!result.ok) toast('지금 위치에서는 쓸 수 없어요');
+  });
+}
+
+
+
+document.getElementById('done').addEventListener('click', async () => {
+  const out = await editor.exportHwpx();
+  const d = new core.HwpDocument(out);
+  try { log('saved text: ' + JSON.stringify(d.getTextFileText())); } finally { d.free(); }
+  toast('저장했어요');
+});
+</script>
+</body>
+</html>
