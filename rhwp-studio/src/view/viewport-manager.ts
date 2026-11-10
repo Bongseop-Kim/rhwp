@@ -37,6 +37,9 @@ export class ViewportManager {
   private pageMovement: PageMovementSettings = { ...DEFAULT_PAGE_MOVEMENT };
   private onScrollBound: () => void;
   private onWheelBound: (e: WheelEvent) => void;
+  private onTouchBound: (e: TouchEvent) => void;
+  /** 두 손가락 핀치 시작 시점의 손가락 간격과 배율. 핀치 중이 아니면 null. */
+  private pinchStart: { distance: number; zoom: number } | null = null;
   private onZoomAnimationFrameBound: (timestamp: number) => void;
   private onResizeObserverErrorBound: (e: ErrorEvent) => void;
   private eventBus: EventBus;
@@ -49,6 +52,7 @@ export class ViewportManager {
     );
     this.onScrollBound = this.onScroll.bind(this);
     this.onWheelBound = this.onWheel.bind(this);
+    this.onTouchBound = this.onTouch.bind(this);
     this.onZoomAnimationFrameBound = this.onZoomAnimationFrame.bind(this);
     this.onResizeObserverErrorBound = this.onResizeObserverError.bind(this);
   }
@@ -59,6 +63,9 @@ export class ViewportManager {
     this.container = container;
     container.addEventListener('scroll', this.onScrollBound, { passive: true });
     container.addEventListener('wheel', this.onWheelBound, { passive: false });
+    for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel'] as const) {
+      container.addEventListener(type, this.onTouchBound, { passive: false });
+    }
 
     // 크로미움은 이 경고를 실제 스크립트 예외가 아니라 window `error` 이벤트로 합성
     // 보고한다. 아래 콜백이 동기 DOM 변이를 하지 않아도(매크로태스크로 미룸) 대형
@@ -90,6 +97,10 @@ export class ViewportManager {
     if (this.container) {
       this.container.removeEventListener('scroll', this.onScrollBound);
       this.container.removeEventListener('wheel', this.onWheelBound);
+      for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel'] as const) {
+        this.container.removeEventListener(type, this.onTouchBound);
+      }
+      this.pinchStart = null;
     }
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
@@ -182,6 +193,37 @@ export class ViewportManager {
 
     const target = this.clampZoom(this.zoomTarget * Math.exp(-boundedDelta * WHEEL_ZOOM_SENSITIVITY));
     // min/max 바깥의 무효 입력으로 정착 timer를 연장하거나 새 raster를 만들지 않는다.
+    if (target === this.zoomTarget) return;
+    this.zoomInputSettle.input();
+    this.applySmoothZoomTo(target, anchor, 'none');
+  }
+
+  /**
+   * 두 손가락 핀치를 문서 배율로 바꾼다. 브라우저 페이지 확대 대신 Ctrl+휠과 같은
+   * 부드러운 확대 경로를 쓰고, 두 손가락의 가운데를 기준점으로 삼는다.
+   * 한 손가락 입력은 건드리지 않아 기본 터치 스크롤이 그대로 동작한다.
+   */
+  private onTouch(e: TouchEvent): void {
+    if (e.touches.length !== 2) {
+      this.pinchStart = null;
+      return;
+    }
+    const [a, b] = [e.touches[0], e.touches[1]];
+    const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    if (e.type === 'touchstart' || !this.pinchStart) {
+      this.pinchStart = distance > 0 ? { distance, zoom: this.zoomTarget } : null;
+      return;
+    }
+    if (e.type !== 'touchmove') return;
+    e.preventDefault();
+    const rect = this.container?.getBoundingClientRect();
+    const anchor = rect && rect.width > 0 && rect.height > 0
+      ? normalizeZoomAnchor({
+        x: ((a.clientX + b.clientX) / 2 - rect.left) / rect.width,
+        y: ((a.clientY + b.clientY) / 2 - rect.top) / rect.height,
+      })
+      : CENTER_ZOOM_ANCHOR;
+    const target = this.clampZoom(this.pinchStart.zoom * (distance / this.pinchStart.distance));
     if (target === this.zoomTarget) return;
     this.zoomInputSettle.input();
     this.applySmoothZoomTo(target, anchor, 'none');

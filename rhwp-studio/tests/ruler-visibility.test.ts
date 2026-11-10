@@ -21,7 +21,8 @@ test('상시 표시는 인쇄의 눈금자 숨김 계약을 바꾸지 않는다'
   assert.match(print, /#editor-area\s*\{\s*display:\s*flex/);
 });
 
-test('모바일 문서 스크롤과 확대 제스처를 유지한다', () => {
-  assert.match(screen, /#scroll-container\s*\{[^}]*touch-action:\s*pan-x pan-y pinch-zoom;/s);
+test('모바일 문서 스크롤은 브라우저에, 핀치는 문서 배율에 맡긴다', () => {
+  // 브라우저 pinch-zoom 은 그려진 쪽을 픽셀 확대해 흐려지므로 ViewportManager 가 문서 배율로 처리한다.
+  assert.match(screen, /#scroll-container\s*\{[^}]*touch-action:\s*pan-x pan-y;/s);
   assert.doesNotMatch(editor, /touch-action:\s*none/);
 });

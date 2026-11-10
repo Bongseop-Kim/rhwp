@@ -489,3 +489,43 @@ test('InputHandler는 zoom과 resize에서 같은 확정 페이지 좌표로 캐
     /private updateViewportOverlayPositions\(\): void \{[\s\S]*?this\.caret\.updatePosition\(this\.viewportManager\.getZoom\(\)\)[\s\S]*?this\.updateSelection\(\)[\s\S]*?this\.updateCellSelection\(\)[\s\S]*?this\.renderPictureObjectSelection\(\)[\s\S]*?this\.renderTableObjectSelection\(\)/,
   );
 });
+
+test('two-finger pinch zooms the document around the pinch midpoint', async (t) => {
+  const frames = new FakeAnimationFrames();
+  const previousRequest = globalThis.requestAnimationFrame;
+  const previousCancel = globalThis.cancelAnimationFrame;
+  globalThis.requestAnimationFrame = frames.request;
+  globalThis.cancelAnimationFrame = frames.cancel;
+  t.after(() => {
+    globalThis.requestAnimationFrame = previousRequest;
+    globalThis.cancelAnimationFrame = previousCancel;
+  });
+
+  const { ViewportManager } = await loadViewportManager();
+  const viewport = new ViewportManager(new FakeEventBus() as never);
+  type Touch = { clientX: number; clientY: number };
+  const onTouch = (
+    viewport as unknown as {
+      onTouch: (event: { type: string; touches: Touch[]; preventDefault: () => void }) => void;
+    }
+  ).onTouch.bind(viewport);
+  let prevented = 0;
+  const touch = (type: string, touches: Touch[]) =>
+    onTouch({ type, touches, preventDefault: () => { prevented += 1; } });
+
+  touch('touchstart', [{ clientX: 100, clientY: 100 }]);
+  touch('touchmove', [{ clientX: 120, clientY: 140 }]);
+  assert.equal(prevented, 0, 'one-finger scroll stays with the browser');
+
+  touch('touchstart', [{ clientX: 100, clientY: 100 }, { clientX: 200, clientY: 100 }]);
+  touch('touchmove', [{ clientX: 50, clientY: 100 }, { clientX: 250, clientY: 100 }]);
+  assert.equal(prevented, 1, 'pinch replaces browser page zoom');
+  touch('touchend', []);
+
+  let timestamp = 16;
+  while (frames.pendingCount > 0 && timestamp < 2000) {
+    frames.flush(timestamp);
+    timestamp += 16;
+  }
+  assert.ok(Math.abs(viewport.getZoom() - 2) < 1e-9, `doubling the finger gap doubles zoom, got ${viewport.getZoom()}`);
+});
