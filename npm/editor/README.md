@@ -58,7 +58,7 @@ import { createStudio } from '@rhwp/editor';
 
 const studio = await createStudio('#app', {
   plugins: ['hwpctrl'],            // HwpCtrl API 사용
-  chrome: { statusbar: false },    // 메뉴·툴바·상태표시줄 표시
+  chrome: { statusbar: false },    // 메뉴·툴바·상태표시줄·눈금자(ruler) 표시
 });
 
 await studio.loadFile(buffer, 'doc.hwp');
@@ -98,6 +98,23 @@ studio.destroy();
 
 `chrome:{ menu:false }` 로 메뉴를 숨겨도 커맨드 레지스트리는 살아 있어 `commands.execute` 가 계속
 동작합니다 — "UI 없는 편집기" 구성이 이것으로 섭니다.
+
+### 좁은 화면(모바일 웹뷰) 구성
+
+```javascript
+const studio = await createStudio('#app', {
+  chrome: { menu: false, toolbar: false, statusbar: false, ruler: false },
+});
+studio.onFormatStateChanged((s) => renderToolbar(s));   // 자체 툴바 켜짐 표시
+await studio.loadFile(buffer, 'doc.hwpx');
+await studio.commands.execute('view:zoom-fit-content'); // 쪽 여백을 창 밖으로, 본문 폭을 창에 맞춤
+```
+
+- 두 손가락 핀치는 문서 배율로 처리합니다(767px 이하). 호스트 페이지는 `user-scalable=no` 로
+  페이지 확대를 막고, 가상 키보드가 문서 창을 줄이도록 `interactive-widget=resizes-content` 를 둡니다.
+  문서 창이 줄면 입력 중인 줄을 다시 보입니다.
+- 자체 툴바 버튼은 `pointerdown` 에서 `preventDefault()` 해야 누를 때 키보드가 닫히지 않습니다.
+- `format:toggle-bullet` 은 `{ bulletChar: '•' }` 로 글머리표 모양을 고를 수 있습니다.
 
 ### 검증
 
@@ -241,6 +258,20 @@ v1 target은 control·field·혼합 글자 서식이 없는 본문 문단 전체
 const off = editor.onFieldChanged((event) => {
   if (event.inField) console.log(event.name, event.guide, event.fieldId);
   else console.log('누름틀 밖');
+});
+off();
+```
+
+### 캐럿 서식 상태 이벤트
+
+캐럿 위치의 굵게·기울임·밑줄·취소선·정렬·목록 상태가 바뀌면 알림을 받습니다. studio 툴바를 숨기고
+자체 툴바를 그릴 때 버튼 켜짐 표시에 씁니다(`format-state-events-v1`). 값이 바뀔 때만 오며, 이미
+받은 상태가 있으면 구독 직후 마지막 상태를 한 번 받습니다.
+
+```javascript
+const off = editor.onFormatStateChanged((s) => {
+  // { schemaVersion: 1, bold, italic, underline, strikethrough, alignment: 'justify', list: 'bullet' }
+  boldButton.ariaPressed = String(s.bold);
 });
 off();
 ```
