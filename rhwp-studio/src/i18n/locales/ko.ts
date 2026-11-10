@@ -398,6 +398,7 @@ const catalog = {
   "command.view.zoomDialog.label": "화면 확대/축소...",
   "command.view.zoomFitPage.label": "쪽 맞춤",
   "command.view.zoomFitWidth.label": "폭 맞춤",
+  "command.view.zoomFitContent.label": "본문 폭 맞춤",
   "command.view.zoomIn.label": "확대",
   "command.view.zoomOut.label": "축소",
   "dialog.about.closeBtn.text": "닫기",

@@ -11,6 +11,7 @@ import {
 } from '../../view/grid-settings';
 import { HWPUNIT_PER_MM } from '../../core/hwp-constants';
 import {
+  calculateFitContentZoom,
   resolveZoomFitZoom,
   type ZoomFitMetrics,
 } from '../../view/zoom-fit';
@@ -63,6 +64,30 @@ function applyZoomFit(services: CommandServices, mode: 'fitWidth' | 'fitPage'): 
   const zoom = resolveZoomFitZoom(mode, metrics);
   if (zoom === null) return;
   vm.setZoom(zoom, CENTER_ZOOM_ANCHOR, mode);
+}
+
+/** 본문 좌우 끝에서 창 가장자리까지 남길 여유(px). */
+const FIT_CONTENT_INSET = 12;
+
+/**
+ * 캐럿이 있는 쪽의 본문 폭(좌우 여백·제본 여백 제외)을 창 폭에 맞추고,
+ * 본문 왼쪽 위가 창 왼쪽 위에 오도록 스크롤한다. 창 폭이 바뀌어도 다시 맞추지는 않는다.
+ */
+function applyZoomFitContent(services: CommandServices): void {
+  const vm = services.getViewportManager();
+  const input = services.getInputHandler();
+  if (!vm || !input) return;
+  const pageIndex = input.getCaretPageIndex();
+  const info = services.wasm.getPageInfo(pageIndex);
+  const gutter = info.marginGutter ?? 0;
+  const zoom = calculateFitContentZoom(vm.getViewportSize().width, info, FIT_CONTENT_INSET);
+  if (zoom === null) return;
+  // setZoom 은 쪽 배치와 앵커 스크롤을 같은 호출에서 끝낸다. 그 뒤 프레임에 본문 위치로 옮긴다.
+  vm.setZoom(zoom);
+  requestAnimationFrame(() => {
+    // 본문은 위 여백과 머리말 여백 아래에서 시작한다.
+    input.revealPageArea(pageIndex, info.marginLeft + gutter, info.marginTop + info.marginHeader, FIT_CONTENT_INSET);
+  });
 }
 
 /** 배율 고정값 커맨드 생성 헬퍼 */
@@ -304,6 +329,15 @@ export const viewCommands: CommandDef[] = [
     shortcutLabel: 'Ctrl+G,W',
     execute(services) {
       applyZoomFit(services, 'fitWidth');
+    },
+  },
+  {
+    // 좁은 화면용: 쪽 좌우 여백을 창 밖으로 보내고 본문 폭을 창 폭에 맞춘다.
+    id: 'view:zoom-fit-content',
+    label: t('command.view.zoomFitContent.label'),
+    canExecute: (ctx) => ctx.hasDocument,
+    execute(services) {
+      applyZoomFitContent(services);
     },
   },
   zoomLevel(50),

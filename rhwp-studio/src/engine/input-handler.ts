@@ -4530,6 +4530,23 @@ export class InputHandler {
   }
   */
 
+  /** 캐럿이 있는 전역 쪽 번호. 캐럿을 아직 못 그렸으면 0. */
+  getCaretPageIndex(): number {
+    return this.cursor.getRect()?.pageIndex ?? 0;
+  }
+
+  /**
+   * 쪽 안의 한 점(배율 1 기준 px)이 창 왼쪽 위에서 `inset` 만큼 떨어지도록 스크롤한다.
+   * 본문 폭 맞춤처럼 쪽 여백을 창 밖으로 보낼 때 쓴다.
+   */
+  revealPageArea(pageIndex: number, x: number, y: number, inset: number): void {
+    const zoom = this.viewportManager.getZoom();
+    const pageTop = this.virtualScroll.getPageOffset(pageIndex);
+    const pageLeft = this.virtualScroll.getPageLeftResolved(pageIndex, this.container.scrollWidth);
+    this.container.scrollLeft = Math.max(0, pageLeft + x * zoom - inset);
+    this.container.scrollTop = Math.max(0, pageTop + y * zoom - inset);
+  }
+
   /** 캐럿이 화면 밖이면 스크롤을 조정한다 */
   private scrollCaretIntoView(rect: import('@/core/types').CursorRect): void {
     const zoom = this.viewportManager.getZoom();

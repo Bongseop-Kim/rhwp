@@ -398,6 +398,7 @@ const catalog = {
   "command.view.zoomDialog.label": "Zoom...",
   "command.view.zoomFitPage.label": "Fit Page",
   "command.view.zoomFitWidth.label": "Fit Width",
+  "command.view.zoomFitContent.label": "Fit Text Width",
   "command.view.zoomIn.label": "Zoom In",
   "command.view.zoomOut.label": "Zoom Out",
   "dialog.about.closeBtn.text": "Close",

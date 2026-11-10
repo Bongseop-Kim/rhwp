@@ -220,3 +220,12 @@ test('배율 슬라이더 손잡이와 100% 눈금은 같은 12px 크기이며 �
   assert.doesNotMatch(html, /stb-zoom-range-wrap is-neutral/);
   assert.doesNotMatch(main, /classList\.toggle\('is-neutral'/);
 });
+
+test('본문 폭 맞춤은 좌우·제본 여백을 뺀 본문 폭을 창 폭에 맞춘다', async () => {
+  const { calculateFitContentZoom } = await import('../src/view/zoom-fit.ts');
+  // 폭 800 중 본문 600(여백 100/80, 제본 20). 창 624 - inset 12*2 = 600 → 1배
+  assert.equal(calculateFitContentZoom(624, { width: 800, marginLeft: 100, marginRight: 80, marginGutter: 20 }, 12), 1);
+  assert.equal(calculateFitContentZoom(324, { width: 800, marginLeft: 100, marginRight: 100 }, 12), 0.5);
+  assert.equal(calculateFitContentZoom(0, { width: 800, marginLeft: 100, marginRight: 100 }, 12), null);
+  assert.equal(calculateFitContentZoom(400, { width: 100, marginLeft: 60, marginRight: 60 }, 12), null, '본문 폭이 없으면 계산하지 않는다');
+});

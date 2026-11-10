@@ -158,3 +158,25 @@ export function resolveZoomFitZoom(
       return null;
   }
 }
+
+export interface FitContentPage {
+  width: number;
+  marginLeft: number;
+  marginRight: number;
+  marginGutter?: number;
+}
+
+/**
+ * 쪽 좌우 여백·제본 여백을 뺀 본문 폭이 창 폭(양쪽 inset 제외)에 들어오는 배율.
+ * 계산할 수 없으면 null.
+ */
+export function calculateFitContentZoom(
+  viewportWidth: number,
+  page: FitContentPage,
+  inset: number,
+): number | null {
+  const contentWidth = page.width - page.marginLeft - page.marginRight - (page.marginGutter ?? 0);
+  const available = viewportWidth - inset * 2;
+  if (!isPositiveFinite(contentWidth) || !isPositiveFinite(available)) return null;
+  return clampRequestedZoom(available / contentWidth);
+}
