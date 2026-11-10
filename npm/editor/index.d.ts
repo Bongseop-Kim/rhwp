@@ -359,7 +359,7 @@ export declare class RhwpEditor {
   onFieldChanged(listener: (event: RhwpFieldChangedEventV1) => void): () => void;
   /**
    * 캐럿 서식 상태가 바뀔 때 이벤트를 받는다. 자체 툴바의 켜짐 표시용.
-   * 값이 바뀔 때만 오고 문서를 열 때 첫 상태가 한 번 오므로 `loadFile` 전에 구독한다.
+   * 값이 바뀔 때만 오며, 이미 받은 상태가 있으면 구독 직후 마지막 상태를 한 번 받는다.
    * 스튜디오가 format-state-events-v1 을 광고하지 않으면 던진다
    */
   onFormatStateChanged(listener: (event: RhwpFormatStateV1) => void): () => void;

@@ -103,7 +103,18 @@ export class RhwpEditor {
     this._offDocumentChanged = null;
     this._fieldChangedListeners = new Set();
     this._formatStateListeners = new Set();
-    this._offFormatState = null;
+    // 서식 상태는 값이 바뀔 때만 온다. 첫 상태는 loadFile 중에 오므로 연결 직후부터 받아 두고
+    // 늦게 구독한 listener 에도 마지막 상태를 한 번 알려준다.
+    this._lastFormatState = null;
+    this._offFormatState = transport.supports?.('format-state-events-v1')
+      ? transport.on('formatStateChanged', (payload) => {
+        if (payload?.schemaVersion !== 1) return;
+        this._lastFormatState = payload;
+        for (const subscriber of this._formatStateListeners) {
+          try { subscriber(payload); } catch { /* 한 listener가 다른 listener를 막지 않는다. */ }
+        }
+      })
+      : null;
     this._offFieldChanged = null;
     this._lastDocumentEpoch = null;
     this._lastDocumentChangeSeq = null;
@@ -398,20 +409,15 @@ export class RhwpEditor {
     assertCapability(this._transport, 'format-state-events-v1');
     if (typeof listener !== 'function') throw new TypeError('listener must be a function');
     this._formatStateListeners.add(listener);
-    if (!this._offFormatState) {
-      this._offFormatState = this._transport.on('formatStateChanged', (payload) => {
-        if (payload?.schemaVersion !== 1) return;
-        for (const subscriber of this._formatStateListeners) {
-          try { subscriber(payload); } catch { /* 한 listener가 다른 listener를 막지 않는다. */ }
-        }
+    const last = this._lastFormatState;
+    if (last) {
+      queueMicrotask(() => {
+        if (!this._formatStateListeners.has(listener)) return;
+        try { listener(last); } catch { /* 구독자 오류는 SDK 밖으로 새지 않는다. */ }
       });
     }
     return () => {
       this._formatStateListeners.delete(listener);
-      if (this._formatStateListeners.size === 0) {
-        this._offFormatState?.();
-        this._offFormatState = null;
-      }
     };
   }
 

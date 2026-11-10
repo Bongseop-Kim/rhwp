@@ -45,10 +45,12 @@ export function createFormatStateForwarder(): {
   char(props: unknown): RhwpFormatStateV1 | null;
   para(props: unknown): RhwpFormatStateV1 | null;
 } {
-  let char: CharLike = {};
-  let para: ParaLike = {};
+  let char: CharLike | null = null;
+  let para: ParaLike | null = null;
   let last = '';
   const emit = (): RhwpFormatStateV1 | null => {
+    // 캐럿 갱신은 글자 → 문단 순으로 두 번 알린다. 반쪽 상태(정렬 '')를 보내지 않는다.
+    if (!char || !para) return null;
     const state: RhwpFormatStateV1 = {
       schemaVersion: 1,
       bold: !!char.bold,
