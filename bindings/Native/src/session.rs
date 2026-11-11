@@ -853,6 +853,37 @@ pub unsafe extern "C" fn rhwp_session_open(
     })
 }
 
+/// HTML 본문으로 새 문서 세션을 연다. 길이 0이면 빈 문서다.
+///
+/// # Safety
+/// html은 지정 길이만큼 읽을 수 있는 UTF-8 영역이어야 한다.
+#[no_mangle]
+pub unsafe extern "C" fn rhwp_session_open_html(html: *const u8, len: usize) -> *mut c_char {
+    response(|| {
+        let bytes = unsafe { input(html, len, MAX_DOCUMENT_BYTES)? };
+        let html = std::str::from_utf8(bytes)
+            .map_err(|_| NativeHostError::InvalidArgument("html is not UTF-8".into()))?;
+        HOST.with(|host| {
+            let mut host = host.borrow_mut();
+            if host.sessions.len() >= MAX_SESSIONS {
+                return Err(NativeHostError::LimitExceeded(
+                    "too many open sessions".into(),
+                ));
+            }
+            let session = if html.trim().is_empty() {
+                NativeDocumentSession::new_blank()?
+            } else {
+                NativeDocumentSession::new_from_html(html)?
+            };
+            let id = next_handle()?;
+            let page_count = session.document().page_count();
+            host.sessions
+                .insert(id, ManagedSession::View(Box::new(session)));
+            Ok(json!({"ok":true,"handle":id,"pageCount":page_count,"revision":0}))
+        })
+    })
+}
+
 /// # Safety
 /// request는 호출 중 읽을 수 있는 request_len 바이트의 UTF-8 JSON이어야 한다.
 #[no_mangle]

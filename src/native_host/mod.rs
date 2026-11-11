@@ -168,6 +168,20 @@ impl NativeDocumentSession {
         Ok(Self::from_core(core))
     }
 
+    /// 빈 문서에 HTML 을 붙여 연다. 표·그림도 가져온다 — 편집기의 `paste_html` 은
+    /// undo 스냅샷이 본문 글자만 다뤄 표·개체 HTML 을 거부하지만, 여는 시점에는 이력이 없다.
+    pub fn new_from_html(html: &str) -> Result<Self, NativeHostError> {
+        let mut core = DocumentCore::new_empty();
+        core.create_blank_document_native()?;
+        let result = core.paste_html_native(0, 0, 0, html)?;
+        if !result.contains("\"ok\":true") {
+            return Err(NativeHostError::InvalidArgument(
+                "HTML could not be imported".into(),
+            ));
+        }
+        Ok(Self::from_core(core))
+    }
+
     pub fn open_bytes(bytes: &[u8], password: Option<&[u8]>) -> Result<Self, NativeHostError> {
         if bytes.is_empty() {
             return Err(NativeHostError::InvalidArgument("empty document".into()));

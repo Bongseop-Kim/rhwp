@@ -518,6 +518,11 @@ unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("tracing"
 # 재사용 가능한 개발자 도구만 명시적으로 Cargo target에 등록한다.
 # 이슈별 일회성 probe는 mydocs/tech/investigations/issue-*/probes에 보존하며
 # 기본 build/clippy 대상으로 다시 끌어오지 않는다.
+# mobile-poc: S0-4 HTML→HWPX 변환 탐침 (PR 대상 아님)
+[[example]]
+name = "mobile_poc_html_to_hwpx"
+path = "mobile-poc/html_to_hwpx.rs"
+
 [[example]]
 name = "audit_image_magic"
 path = "tools/diagnostics/audit_image_magic.rs"

@@ -310,6 +310,80 @@ impl NativeEditor {
         Ok(self.outcome(true, true))
     }
 
+    /// Remove every object control (table, picture, shape, field ...) held by one
+    /// body paragraph, as one undoable action. The paragraph itself is removed
+    /// when nothing else is left in it. Scalar selections cannot address such a
+    /// paragraph, so this takes the paragraph index instead of the selection.
+    pub(super) fn delete_paragraph_objects(
+        &mut self,
+        expected_revision: u64,
+        section: u32,
+        paragraph: u32,
+    ) -> Result<NativeEditOutcome, NativeHostError> {
+        self.session.check_revision(expected_revision)?;
+        self.require_no_composition()?;
+        let (s, p) = (section as usize, paragraph as usize);
+        let is_object =
+            |control: &Control| !matches!(control, Control::SectionDef(_) | Control::ColumnDef(_));
+        let target = self
+            .session
+            .core
+            .document()
+            .sections
+            .get(s)
+            .and_then(|section| section.paragraphs.get(p))
+            .ok_or_else(|| NativeHostError::InvalidArgument("paragraph out of range".into()))?;
+        let objects: Vec<usize> = (0..target.controls.len())
+            .filter(|&index| is_object(&target.controls[index]))
+            .collect();
+        if objects.is_empty() {
+            return Ok(self.outcome(false, false));
+        }
+        self.check_mutation_capacity()?;
+        self.check_snapshot_slots(2)?;
+        let selection_before = self.selection.clone();
+        let before = self.session.core.save_snapshot_native();
+        let core = &mut self.session.core;
+        let result = objects
+            .iter()
+            .rev()
+            .try_for_each(|&index| core.delete_control_native(s, p, index).map(|_| ()))
+            .and_then(|_| {
+                let paragraphs = &core.document().sections[s].paragraphs;
+                let rest = &paragraphs[p];
+                if rest.text.is_empty() && rest.controls.is_empty() && paragraphs.len() > 1 {
+                    core.delete_paragraph_native(s, p).map(|_| ())
+                } else {
+                    Ok(())
+                }
+            })
+            .map_err(NativeHostError::from)
+            .and_then(|_| self.session.did_mutate().map(|_| ()));
+        if let Err(error) = result {
+            return Err(self.rollback_and_discard(before, error));
+        }
+        let last = self.session.core.document().sections[s].paragraphs.len() - 1;
+        let caret = NativeTextPosition {
+            section,
+            paragraph: paragraph.min(last as u32),
+            scalar_offset: 0,
+            cell_path: Vec::new(),
+        };
+        let selection_after = NativeTextSelection {
+            anchor: caret.clone(),
+            focus: caret,
+        };
+        let after = self.session.core.save_snapshot_native();
+        self.selection = selection_after.clone();
+        self.record(HistoryEntry {
+            before,
+            after,
+            selection_before,
+            selection_after,
+        });
+        Ok(self.outcome(true, true))
+    }
+
     pub fn begin_composition(
         &mut self,
         expected_revision: u64,

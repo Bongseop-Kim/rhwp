@@ -252,6 +252,17 @@ impl TypefaceCatalog {
         true
     }
 
+    /// Every supplied face, best style match first. A host that supplies fonts
+    /// (mobile: no usable system catalog) uses these as the last resort so text
+    /// in a family outside the generic chains still draws.
+    pub(super) fn all(&self, style: FontStyle) -> Vec<Typeface> {
+        let mut faces: Vec<Typeface> = self.families.values().flatten().cloned().collect();
+        // HashMap order is arbitrary; unique_id is load order.
+        faces.sort_by_key(|face| (supplied_style_rank(style, face.font_style()), face.unique_id()));
+        faces.dedup_by_key(|face| face.unique_id());
+        faces
+    }
+
     pub fn candidates(&self, family: &str, style: FontStyle) -> Vec<Typeface> {
         let mut result = Vec::new();
         for family in family

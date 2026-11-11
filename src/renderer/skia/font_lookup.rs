@@ -334,6 +334,9 @@ fn typeface_candidates_for_families_for_source(
             push(typeface, "bundled", family_order);
         }
     }
+    for typeface in custom_typefaces.all(style) {
+        push(typeface, "custom", families.len());
+    }
     if let Some(typeface) = legacy_typeface_for_style(font_mgr, style) {
         push(typeface, "legacy", families.len());
     }

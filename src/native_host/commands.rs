@@ -62,6 +62,9 @@ pub enum NativeEditCommand {
     /// delete a noncollapsed selection.
     JoinPreviousParagraph {},
     SelectAll {},
+    /// Remove the tables, pictures and other object controls of one body
+    /// paragraph (and the paragraph, when it held nothing else).
+    DeleteParagraphObjects { section: u32, paragraph: u32 },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -79,6 +82,14 @@ impl NativeEditor {
         expected_revision: u64,
         command: NativeEditCommand,
     ) -> Result<NativeCommandOutcome, NativeHostError> {
+        // Addresses a paragraph the scalar selection cannot enter, so it must
+        // not depend on the current selection being valid.
+        if let NativeEditCommand::DeleteParagraphObjects { section, paragraph } = command {
+            return Ok(NativeCommandOutcome {
+                outcome: self.delete_paragraph_objects(expected_revision, section, paragraph)?,
+                preferred_x: None,
+            });
+        }
         self.check_edit_ready(expected_revision)?;
         let mut preferred_x = None;
         let outcome = match command {
@@ -136,6 +147,7 @@ impl NativeEditor {
                 }
                 self.join_at(expected_revision, self.selection().focus.paragraph)?
             }
+            NativeEditCommand::DeleteParagraphObjects { .. } => unreachable!("handled above"),
             NativeEditCommand::SelectAll {} => {
                 let mut start = self.selection().focus.clone();
                 start.paragraph = 0;
