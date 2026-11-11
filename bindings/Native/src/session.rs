@@ -90,6 +90,12 @@ impl ManagedSession {
             }
         }
     }
+    fn set_page_def(&mut self, section: u32, json: &str) -> Result<u64, NativeHostError> {
+        match self {
+            Self::View(session) => session.set_page_def(section, json),
+            Self::Edit(editor) => editor.set_page_def(section, json),
+        }
+    }
     fn prepare_save(&mut self, format: NativeSaveFormat) -> Result<PreparedSave, NativeHostError> {
         match self {
             Self::View(session) => session.prepare_save(format),
@@ -307,6 +313,13 @@ enum Request {
         paragraph: u32,
         offset: u32,
         cell: Option<rhwp_core::native_host::commands::NativeCellAddress>,
+    },
+    PageDef {
+        section: u32,
+    },
+    SetPageDef {
+        section: u32,
+        def: Value,
     },
     ObjectParagraphs {
         section: u32,
@@ -1017,6 +1030,11 @@ pub unsafe extern "C" fn rhwp_session_request(
                         Some(cell) => core.get_cell_char_properties_at_native(s, p, cell.control as usize, cell.cell as usize, cell.paragraph as usize, o),
                     }.map_err(NativeHostError::from)?;
                     Ok(json!({"ok":true,"properties":serde_json::from_str::<Value>(&properties).unwrap_or(Value::Null)}))
+                }
+                Request::PageDef { section } => Ok(json!({"ok":true,"def":serde_json::from_str::<Value>(&session.page_def(section)?).unwrap_or(Value::Null)})),
+                Request::SetPageDef { section, def } => {
+                    let revision = record.set_page_def(section, &def.to_string())?;
+                    Ok(json!({"ok":true,"revision":revision}))
                 }
                 Request::ObjectParagraphs { section } => Ok(json!({"ok":true,"paragraphs":session.object_paragraphs(section)?})),
                 Request::ParaProperties { section, paragraph } => {

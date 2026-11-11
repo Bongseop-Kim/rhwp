@@ -178,6 +178,20 @@ impl NativeDocumentSession {
 
     /// 빈 문서에 HTML 을 붙여 연다. 표·그림도 가져온다 — 편집기의 `paste_html` 은
     /// undo 스냅샷이 본문 글자만 다뤄 표·개체 HTML 을 거부하지만, 여는 시점에는 이력이 없다.
+    /// The section's paper definition as JSON (`width`, `height`, `marginLeft` ...,
+    /// in HWPUNIT).
+    pub fn page_def(&self, section: u32) -> Result<String, NativeHostError> {
+        Ok(self.core.get_page_def_native(section as usize)?)
+    }
+
+    /// Change the section's paper definition and repaginate. This is not an
+    /// editor action: it records no undo entry. A host can narrow the paper for
+    /// a small screen and restore the original before saving.
+    pub fn set_page_def(&mut self, section: u32, json: &str) -> Result<u64, NativeHostError> {
+        self.core.set_page_def_native(section as usize, json)?;
+        self.did_mutate()
+    }
+
     /// Body paragraphs of one section that hold object controls (tables,
     /// pictures, shapes, fields ...). Scalar text edits reject these paragraphs,
     /// so a host uses this to offer object actions instead of a text caret.

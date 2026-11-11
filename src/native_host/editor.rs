@@ -163,6 +163,12 @@ impl NativeEditor {
         self.session.set_font_sources(paths, environment)
     }
 
+    /// Change the paper definition without touching history or selection.
+    pub fn set_page_def(&mut self, section: u32, json: &str) -> Result<u64, NativeHostError> {
+        self.require_no_composition()?;
+        self.session.set_page_def(section, json)
+    }
+
     /// Save without committing an unfinished IME preview. HWP stores current
     /// body focus; HWPX retains its existing source-settings/default policy.
     pub fn prepare_save(
