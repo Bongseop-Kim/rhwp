@@ -301,6 +301,20 @@ enum Request {
         max_bytes: usize,
     },
     RasterCacheStats {},
+    /// Character properties at a body position, or in a table cell paragraph.
+    CharProperties {
+        section: u32,
+        paragraph: u32,
+        offset: u32,
+        cell: Option<rhwp_core::native_host::commands::NativeCellAddress>,
+    },
+    ObjectParagraphs {
+        section: u32,
+    },
+    ParaProperties {
+        section: u32,
+        paragraph: u32,
+    },
     PageSize {
         page: u32,
     },
@@ -995,6 +1009,20 @@ pub unsafe extern "C" fn rhwp_session_request(
                     let (can_undo,can_redo,composition_id) = record.editing_info();
                     Ok(json!({"ok":true,"pageCount":session.document().page_count(),"revision":session.revision(),"fontGeneration":session.font_generation(),"canUndo":can_undo,"canRedo":can_redo,"compositionId":composition_id,"isDirty":session.is_dirty()}))
                 },
+                Request::CharProperties { section, paragraph, offset, cell } => {
+                    let core = session.document();
+                    let (s, p, o) = (section as usize, paragraph as usize, offset as usize);
+                    let properties = match cell {
+                        None => core.get_char_properties_at_native(s, p, o),
+                        Some(cell) => core.get_cell_char_properties_at_native(s, p, cell.control as usize, cell.cell as usize, cell.paragraph as usize, o),
+                    }.map_err(NativeHostError::from)?;
+                    Ok(json!({"ok":true,"properties":serde_json::from_str::<Value>(&properties).unwrap_or(Value::Null)}))
+                }
+                Request::ObjectParagraphs { section } => Ok(json!({"ok":true,"paragraphs":session.object_paragraphs(section)?})),
+                Request::ParaProperties { section, paragraph } => {
+                    let properties = session.document().get_para_properties_at_native(section as usize, paragraph as usize).map_err(NativeHostError::from)?;
+                    Ok(json!({"ok":true,"properties":serde_json::from_str::<Value>(&properties).unwrap_or(Value::Null)}))
+                }
                 Request::PageSize { page } => Ok(json!({"ok":true,"page":page,"size":session.page_size(page)?})),
                 Request::Render { page, scale } => {
                     let frame = session.render_page(page, scale)?;

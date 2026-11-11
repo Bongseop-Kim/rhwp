@@ -98,6 +98,14 @@ impl NativeHostError {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeObjectParagraph {
+    pub paragraph: u32,
+    /// At least one of its objects is a table.
+    pub table: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativePageSize {
@@ -170,6 +178,36 @@ impl NativeDocumentSession {
 
     /// 빈 문서에 HTML 을 붙여 연다. 표·그림도 가져온다 — 편집기의 `paste_html` 은
     /// undo 스냅샷이 본문 글자만 다뤄 표·개체 HTML 을 거부하지만, 여는 시점에는 이력이 없다.
+    /// Body paragraphs of one section that hold object controls (tables,
+    /// pictures, shapes, fields ...). Scalar text edits reject these paragraphs,
+    /// so a host uses this to offer object actions instead of a text caret.
+    pub fn object_paragraphs(&self, section: u32) -> Result<Vec<NativeObjectParagraph>, NativeHostError> {
+        use crate::model::control::Control;
+        let section = self
+            .core
+            .document()
+            .sections
+            .get(section as usize)
+            .ok_or_else(|| NativeHostError::InvalidArgument("section out of range".into()))?;
+        Ok(section
+            .paragraphs
+            .iter()
+            .enumerate()
+            .filter_map(|(index, paragraph)| {
+                let mut objects = paragraph
+                    .controls
+                    .iter()
+                    .filter(|control| !matches!(control, Control::SectionDef(_) | Control::ColumnDef(_)))
+                    .peekable();
+                objects.peek()?;
+                Some(NativeObjectParagraph {
+                    paragraph: index as u32,
+                    table: objects.any(|control| matches!(control, Control::Table(_))),
+                })
+            })
+            .collect())
+    }
+
     pub fn new_from_html(html: &str) -> Result<Self, NativeHostError> {
         let mut core = DocumentCore::new_empty();
         core.create_blank_document_native()?;

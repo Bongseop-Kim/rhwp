@@ -310,6 +310,213 @@ impl NativeEditor {
         Ok(self.outcome(true, true))
     }
 
+    /// Commands that address their target explicitly. Returns the command back
+    /// when it is a selection-based one.
+    pub(super) fn execute_addressed(
+        &mut self,
+        expected_revision: u64,
+        command: super::commands::NativeEditCommand,
+    ) -> Result<Result<NativeEditOutcome, super::commands::NativeEditCommand>, NativeHostError> {
+        use super::commands::NativeEditCommand as Command;
+        const MAX_PICTURE_BYTES: u64 = 10 * 1024 * 1024;
+        let outcome = match command {
+            Command::DeleteParagraphObjects { section, paragraph } => {
+                self.delete_paragraph_objects(expected_revision, section, paragraph)?
+            }
+            Command::ApplyCharFormat {
+                section,
+                paragraph,
+                cell,
+                start,
+                end,
+                props,
+            } => self.core_transaction(expected_revision, |core| {
+                let (s, p, props) = (section as usize, paragraph as usize, props.to_string());
+                match cell {
+                    None => core.apply_char_format_native(s, p, start as usize, end as usize, &props),
+                    Some(cell) => core.apply_char_format_in_cell_native(
+                        s,
+                        p,
+                        cell.control as usize,
+                        cell.cell as usize,
+                        cell.paragraph as usize,
+                        start as usize,
+                        end as usize,
+                        &props,
+                    ),
+                }?;
+                Ok(())
+            })?,
+            Command::ApplyParaFormat {
+                section,
+                paragraph,
+                props,
+            } => self.core_transaction(expected_revision, |core| {
+                core.apply_para_format_native(section as usize, paragraph as usize, &props.to_string())?;
+                Ok(())
+            })?,
+            Command::ReplaceCellText {
+                section,
+                paragraph,
+                cell,
+                start,
+                end,
+                text,
+            } => {
+                Self::validate_text(&text)?;
+                if end < start {
+                    return Err(NativeHostError::InvalidArgument("cell range is reversed".into()));
+                }
+                self.core_transaction(expected_revision, |core| {
+                    let (s, p) = (section as usize, paragraph as usize);
+                    let (control, index, inner) =
+                        (cell.control as usize, cell.cell as usize, cell.paragraph as usize);
+                    if end > start {
+                        core.delete_text_in_cell_native(
+                            s,
+                            p,
+                            control,
+                            index,
+                            inner,
+                            start as usize,
+                            (end - start) as usize,
+                        )?;
+                    }
+                    if !text.is_empty() {
+                        core.insert_text_in_cell_native(s, p, control, index, inner, start as usize, &text)?;
+                    }
+                    Ok(())
+                })?
+            }
+            Command::InsertTable {
+                section,
+                paragraph,
+                offset,
+                rows,
+                columns,
+            } => self.core_transaction(expected_revision, |core| {
+                core.create_table_native(
+                    section as usize,
+                    paragraph as usize,
+                    offset as usize,
+                    rows,
+                    columns,
+                )?;
+                Ok(())
+            })?,
+            Command::ResizeTable {
+                section,
+                paragraph,
+                control,
+                action,
+            } => {
+                use super::commands::NativeTableResize as Resize;
+                let (s, p, c) = (section as usize, paragraph as usize, control as usize);
+                let (rows, columns) = match self
+                    .session
+                    .core
+                    .document()
+                    .sections
+                    .get(s)
+                    .and_then(|section| section.paragraphs.get(p))
+                    .and_then(|paragraph| paragraph.controls.get(c))
+                {
+                    Some(Control::Table(table)) => (table.row_count, table.col_count),
+                    _ => return Err(NativeHostError::InvalidArgument("not a table control".into())),
+                };
+                if matches!(action, Resize::RemoveLastRow) && rows <= 1
+                    || matches!(action, Resize::RemoveLastColumn) && columns <= 1
+                {
+                    return Err(NativeHostError::InvalidArgument(
+                        "a table keeps at least one row and column".into(),
+                    ));
+                }
+                self.core_transaction(expected_revision, |core| {
+                    match action {
+                        Resize::AppendRow => core.insert_table_row_native(s, p, c, rows - 1, true),
+                        Resize::AppendColumn => core.insert_table_column_native(s, p, c, columns - 1, true),
+                        Resize::RemoveLastRow => core.delete_table_row_native(s, p, c, rows - 1),
+                        Resize::RemoveLastColumn => core.delete_table_column_native(s, p, c, columns - 1),
+                    }?;
+                    Ok(())
+                })?
+            }
+            Command::InsertPicture {
+                section,
+                paragraph,
+                offset,
+                path,
+                width_px,
+                height_px,
+                max_width_hu,
+            } => {
+                if width_px == 0 || height_px == 0 || max_width_hu == 0 {
+                    return Err(NativeHostError::InvalidArgument("picture size is empty".into()));
+                }
+                let invalid = |error: std::io::Error| NativeHostError::InvalidArgument(error.to_string());
+                if std::fs::metadata(&path).map_err(invalid)?.len() > MAX_PICTURE_BYTES {
+                    return Err(NativeHostError::LimitExceeded("picture exceeds 10 MiB".into()));
+                }
+                let data = std::fs::read(&path).map_err(invalid)?;
+                let extension = path
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .unwrap_or("png")
+                    .to_ascii_lowercase();
+                // 96 dpi: one pixel is 75 HWPUNIT (7200 per inch).
+                let natural = u64::from(width_px) * 75;
+                let width = natural.min(u64::from(max_width_hu));
+                let height = u64::from(height_px) * 75 * width / natural;
+                self.core_transaction(expected_revision, |core| {
+                    core.insert_picture_native(
+                        section as usize,
+                        paragraph as usize,
+                        offset as usize,
+                        &[],
+                        &data,
+                        width as u32,
+                        height as u32,
+                        width_px,
+                        height_px,
+                        &extension,
+                        "",
+                        None,
+                        None,
+                    )?;
+                    Ok(())
+                })?
+            }
+            other => return Ok(Err(other)),
+        };
+        Ok(Ok(outcome))
+    }
+
+    /// One undoable core mutation that leaves the scalar selection untouched.
+    fn core_transaction(
+        &mut self,
+        expected_revision: u64,
+        edit: impl FnOnce(&mut DocumentCore) -> Result<(), NativeHostError>,
+    ) -> Result<NativeEditOutcome, NativeHostError> {
+        self.session.check_revision(expected_revision)?;
+        self.require_no_composition()?;
+        self.check_mutation_capacity()?;
+        self.check_snapshot_slots(2)?;
+        let selection = self.selection.clone();
+        let before = self.session.core.save_snapshot_native();
+        let result = edit(&mut self.session.core).and_then(|_| self.session.did_mutate().map(|_| ()));
+        if let Err(error) = result {
+            return Err(self.rollback_and_discard(before, error));
+        }
+        let after = self.session.core.save_snapshot_native();
+        self.record(HistoryEntry {
+            before,
+            after,
+            selection_before: selection.clone(),
+            selection_after: selection,
+        });
+        Ok(self.outcome(true, true))
+    }
+
     /// Remove every object control (table, picture, shape, field ...) held by one
     /// body paragraph, as one undoable action. The paragraph itself is removed
     /// when nothing else is left in it. Scalar selections cannot address such a

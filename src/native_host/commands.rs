@@ -65,6 +65,77 @@ pub enum NativeEditCommand {
     /// Remove the tables, pictures and other object controls of one body
     /// paragraph (and the paragraph, when it held nothing else).
     DeleteParagraphObjects { section: u32, paragraph: u32 },
+    /// Apply character properties (`bold`, `italic`, `underline`, `strikethrough`,
+    /// `fontSize`, `textColor` ...) to a scalar range of one paragraph. `cell`
+    /// addresses a table cell paragraph inside `paragraph`.
+    ApplyCharFormat {
+        section: u32,
+        paragraph: u32,
+        cell: Option<NativeCellAddress>,
+        start: u32,
+        end: u32,
+        props: serde_json::Value,
+    },
+    /// Apply paragraph properties (`alignment` ...) to one body paragraph.
+    ApplyParaFormat {
+        section: u32,
+        paragraph: u32,
+        props: serde_json::Value,
+    },
+    /// Replace a scalar range of one table cell paragraph. Control characters
+    /// are rejected like body input.
+    ReplaceCellText {
+        section: u32,
+        paragraph: u32,
+        cell: NativeCellAddress,
+        start: u32,
+        end: u32,
+        text: String,
+    },
+    /// Insert an empty table at a body position.
+    InsertTable {
+        section: u32,
+        paragraph: u32,
+        offset: u32,
+        rows: u16,
+        columns: u16,
+    },
+    /// Grow or shrink a table at its last row or column.
+    ResizeTable {
+        section: u32,
+        paragraph: u32,
+        control: u32,
+        action: NativeTableResize,
+    },
+    /// Insert an image file at a body position. The pixel size is the image's
+    /// natural size; it is shown at 96 dpi, scaled down to `max_width_hu`.
+    InsertPicture {
+        section: u32,
+        paragraph: u32,
+        offset: u32,
+        path: std::path::PathBuf,
+        width_px: u32,
+        height_px: u32,
+        max_width_hu: u32,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NativeTableResize {
+    AppendRow,
+    AppendColumn,
+    RemoveLastRow,
+    RemoveLastColumn,
+}
+
+/// One paragraph of one cell of a table control held by a body paragraph.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeCellAddress {
+    pub control: u32,
+    pub cell: u32,
+    pub paragraph: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -82,14 +153,17 @@ impl NativeEditor {
         expected_revision: u64,
         command: NativeEditCommand,
     ) -> Result<NativeCommandOutcome, NativeHostError> {
-        // Addresses a paragraph the scalar selection cannot enter, so it must
-        // not depend on the current selection being valid.
-        if let NativeEditCommand::DeleteParagraphObjects { section, paragraph } = command {
-            return Ok(NativeCommandOutcome {
-                outcome: self.delete_paragraph_objects(expected_revision, section, paragraph)?,
-                preferred_x: None,
-            });
-        }
+        // Addressed commands name their target instead of using the scalar
+        // selection, so they must not depend on that selection being valid.
+        let command = match self.execute_addressed(expected_revision, command)? {
+            Ok(outcome) => {
+                return Ok(NativeCommandOutcome {
+                    outcome,
+                    preferred_x: None,
+                })
+            }
+            Err(command) => command,
+        };
         self.check_edit_ready(expected_revision)?;
         let mut preferred_x = None;
         let outcome = match command {
@@ -147,7 +221,13 @@ impl NativeEditor {
                 }
                 self.join_at(expected_revision, self.selection().focus.paragraph)?
             }
-            NativeEditCommand::DeleteParagraphObjects { .. } => unreachable!("handled above"),
+            NativeEditCommand::DeleteParagraphObjects { .. }
+            | NativeEditCommand::ApplyCharFormat { .. }
+            | NativeEditCommand::ApplyParaFormat { .. }
+            | NativeEditCommand::ReplaceCellText { .. }
+            | NativeEditCommand::ResizeTable { .. }
+            | NativeEditCommand::InsertTable { .. }
+            | NativeEditCommand::InsertPicture { .. } => unreachable!("addressed command"),
             NativeEditCommand::SelectAll {} => {
                 let mut start = self.selection().focus.clone();
                 start.paragraph = 0;
