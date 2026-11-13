@@ -489,6 +489,20 @@ impl NativeEditor {
                         None,
                         None,
                     )?;
+                    // The core inserts a floating picture anchored to the paper, which lands on
+                    // top of the text. A touch editor has no drag-to-place, so keep it in line.
+                    let control = core.document.sections[section as usize].paragraphs
+                        [paragraph as usize]
+                        .controls
+                        .iter()
+                        .rposition(|control| matches!(control, Control::Picture(_)))
+                        .ok_or_else(|| NativeHostError::InvalidArgument("inserted picture is missing".into()))?;
+                    core.set_picture_properties_native(
+                        section as usize,
+                        paragraph as usize,
+                        control,
+                        r#"{"treatAsChar":true}"#,
+                    )?;
                     Ok(())
                 })?
             }
