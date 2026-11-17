@@ -231,6 +231,7 @@ impl NativeDocumentSession {
                 "HTML could not be imported".into(),
             ));
         }
+        flow_top_level_tables(&mut core)?;
         Ok(Self::from_core(core))
     }
 
@@ -415,5 +416,90 @@ impl NativeDocumentSession {
             ));
         }
         Ok(())
+    }
+}
+
+/// HTML 가져오기는 표를 글자처럼 취급하는 개체로 만든다. 붙여넣기에는 맞지만,
+/// 문서 전체를 HTML로 열 때는 한 쪽보다 긴 표가 쪽 경계에서 나뉘지 못해 잘린다.
+/// 새 문서의 최상위 표를 본문 흐름에 놓고 행 단위로 쪽을 나누게 한다.
+fn flow_top_level_tables(core: &mut DocumentCore) -> Result<(), NativeHostError> {
+    let inline_tables: Vec<(usize, usize, usize)> = core
+        .document()
+        .sections
+        .iter()
+        .enumerate()
+        .flat_map(|(section, body)| {
+            body.paragraphs
+                .iter()
+                .enumerate()
+                .flat_map(move |(paragraph, host)| {
+                    host.controls
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, control)| {
+                            matches!(control, crate::model::control::Control::Table(table) if table.common.treat_as_char)
+                        })
+                        .map(move |(control, _)| (section, paragraph, control))
+                })
+        })
+        .collect();
+    for (section, paragraph, control) in inline_tables {
+        core.set_table_properties_native(
+            section,
+            paragraph,
+            control,
+            r#"{"treatAsChar":false,"pageBreak":2}"#,
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod html_table_flow_tests {
+    use super::*;
+
+    fn table_html(rows: usize) -> String {
+        let body: String = (1..=rows)
+            .map(|row| format!("<tr><td>row {row}</td><td>value</td></tr>"))
+            .collect();
+        format!(
+            "<p>before</p><table border=\"1\"><thead><tr><th>name</th><th>value</th></tr></thead><tbody>{body}</tbody></table>"
+        )
+    }
+
+    fn tables(session: &NativeDocumentSession) -> Vec<&crate::model::table::Table> {
+        session
+            .document()
+            .document()
+            .sections
+            .iter()
+            .flat_map(|section| section.paragraphs.iter())
+            .flat_map(|paragraph| paragraph.controls.iter())
+            .filter_map(|control| match control {
+                crate::model::control::Control::Table(table) => Some(&**table),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn html_document_tables_flow_with_text_and_break_by_row() {
+        let session = NativeDocumentSession::new_from_html(&table_html(3)).unwrap();
+        let tables = tables(&session);
+        assert_eq!(tables.len(), 1);
+        assert!(!tables[0].common.treat_as_char);
+        assert_eq!(
+            tables[0].page_break,
+            crate::model::table::TablePageBreak::RowBreak
+        );
+        assert!(tables[0].repeat_header);
+    }
+
+    #[test]
+    fn table_taller_than_a_page_continues_on_the_next_page() {
+        let short = NativeDocumentSession::new_from_html(&table_html(3)).unwrap();
+        let long = NativeDocumentSession::new_from_html(&table_html(120)).unwrap();
+        assert_eq!(short.document().page_count(), 1);
+        assert!(long.document().page_count() >= 3);
     }
 }
